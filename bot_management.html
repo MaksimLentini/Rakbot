@@ -121,7 +121,7 @@
             margin-bottom: 10px;
             font-size: 0.95em;
         }
-        input, select {
+        input {
             width: 100%;
             padding: 8px 12px;
             margin: 5px 0;
@@ -131,7 +131,7 @@
             color: #fff;
             font-size: 0.9em;
         }
-        input:focus, select:focus {
+        input:focus {
             outline: none;
             border-color: #e94560;
         }
@@ -255,7 +255,7 @@
     
     <script>
         // ========================================
-        // 1. ЗАГРУЗКА СПИСКА БОТОВ
+        // ЗАГРУЗКА СПИСКА БОТОВ
         // ========================================
         async function loadBots() {
             const container = document.getElementById('botsContainer');
@@ -295,7 +295,7 @@
         }
         
         // ========================================
-        // 2. СОЗДАНИЕ КАРТОЧКИ БОТА
+        // СОЗДАНИЕ КАРТОЧКИ БОТА
         // ========================================
         function createBotCard(bot) {
             const card = document.createElement('div');
@@ -314,8 +314,8 @@
                 
                 <div class="bot-info">
                     <span>🆔 ID: ${bot.id}</span>
-                    <span>🌐 Сервер: ${bot.server_ip || 'не указан'}</span>
-                    <span>📜 Скрипт: ${bot.script_name || 'Нет'}</span>
+                    <span>🌐 Сервер: ${bot.serverIp || 'не указан'}</span>
+                    <span>📜 Скрипт: ${bot.scriptName || 'Нет'}</span>
                     <span>🕐 Последний раз: ${lastSeen}</span>
                 </div>
                 
@@ -348,7 +348,7 @@
                 
                 <div class="command-section">
                     <h4>🌐 Изменить IP сервера</h4>
-                    <input type="text" id="ip_${bot.id}" value="${bot.server_ip || ''}">
+                    <input type="text" id="ip_${bot.id}" value="${bot.serverIp || ''}">
                     <button class="btn-small info" onclick="updateServerIP(${bot.id})">
                         🔄 Обновить IP
                     </button>
@@ -359,7 +359,7 @@
         }
         
         // ========================================
-        // 3. ОТПРАВКА КОМАНД
+        // ОТПРАВКА КОМАНД
         // ========================================
         async function sendChatCommand(botId) {
             const command = document.getElementById(`chat_cmd_${botId}`).value.trim();
@@ -421,7 +421,7 @@
         }
         
         // ========================================
-        // 4. ЗАГРУЗКА СКРИПТА
+        // ЗАГРУЗКА СКРИПТА
         // ========================================
         async function uploadScript(botId, input) {
             const file = input.files[0];
@@ -454,7 +454,7 @@
         }
         
         // ========================================
-        // 5. ОБНОВЛЕНИЕ IP
+        // ОБНОВЛЕНИЕ IP
         // ========================================
         async function updateServerIP(botId) {
             const ip = document.getElementById(`ip_${botId}`).value.trim();
@@ -486,7 +486,7 @@
         }
         
         // ========================================
-        // 6. ЛОГ
+        // ЛОГ
         // ========================================
         function addLog(message) {
             const logEntries = document.getElementById('logEntries');
@@ -503,7 +503,7 @@
         }
         
         // ========================================
-        // 7. АВТООБНОВЛЕНИЕ
+        // АВТООБНОВЛЕНИЕ
         // ========================================
         document.addEventListener('DOMContentLoaded', () => {
             loadBots();
