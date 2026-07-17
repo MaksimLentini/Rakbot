@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAMP Bot Control Panel</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3e 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            background: rgba(20, 20, 50, 0.95);
+            padding: 40px;
+            border-radius: 20px;
+            max-width: 600px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        h1 {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #e94560, #ff6b6b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle {
+            text-align: center;
+            color: #8892b0;
+            margin-bottom: 30px;
+        }
+        .menu {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .menu-btn {
+            padding: 18px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+            text-decoration: none;
+            color: #fff;
+            background: linear-gradient(135deg, #2a2a6e, #1a1a4e);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .menu-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(233, 69, 96, 0.3);
+            border-color: #e94560;
+        }
+        .menu-btn.primary {
+            background: linear-gradient(135deg, #e94560, #c73652);
+        }
+        .menu-btn.primary:hover {
+            box-shadow: 0 10px 30px rgba(233, 69, 96, 0.5);
+        }
+        .menu-btn.secondary {
+            background: linear-gradient(135deg, #2d6a4f, #1b4332);
+        }
+        .menu-btn.secondary:hover {
+            box-shadow: 0 10px 30px rgba(45, 106, 79, 0.5);
+        }
+        .menu-btn.info {
+            background: linear-gradient(135deg, #1a3a6e, #0d1f3c);
+        }
+        .menu-btn.info:hover {
+            box-shadow: 0 10px 30px rgba(26, 58, 110, 0.5);
+        }
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            color: #4a5568;
+            font-size: 0.8em;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 SAMP Bot Panel</h1>
+        <p class="subtitle">Управление ботами для San Andreas Multiplayer</p>
+        
+        <div class="menu">
+            <a href="/register" class="menu-btn primary">📝 Регистрация нового бота</a>
+            <a href="/manage" class="menu-btn secondary">🎮 Управление ботами</a>
+            <a href="/api/bots" class="menu-btn info" target="_blank">📊 Список ботов (API)</a>
+        </div>
+        
+        <div class="footer">
+            <p>Система управления ботами v2.0 | Работает на Render</p>
+            <p style="margin-top: 5px; font-size: 0.8em;">Подключайся через WebSocket: /ws/{bot_id}</p>
+        </div>
+    </div>
+</body>
+</html>
