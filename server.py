@@ -23,23 +23,66 @@ os.makedirs("uploads", exist_ok=True)
 os.makedirs("scripts", exist_ok=True)
 
 # ============================================
-# 2. ХРАНИЛИЩЕ В ПАМЯТИ (ВМЕСТО БАЗЫ ДАННЫХ)
+# 2. ФАЙЛ ДЛЯ ХРАНЕНИЯ ДАННЫХ
 # ============================================
-# Все боты хранятся здесь
-bots_db: Dict[int, dict] = {}
-bot_counter = 1  # Автоинкремент ID
+DATA_FILE = "bots_data.json"
 
-# Активные WebSocket соединения
+# ============================================
+# 3. ФУНКЦИИ ДЛЯ РАБОТЫ С ФАЙЛОМ
+# ============================================
+def load_data():
+    """Загружает данные из JSON-файла"""
+    global bots_db, bot_counter, scripts_db, commands_history
+    
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                bots_db = {int(k): v for k, v in data.get("bots_db", {}).items()}
+                bot_counter = data.get("bot_counter", 1)
+                scripts_db = {int(k): v for k, v in data.get("scripts_db", {}).items()}
+                commands_history = data.get("commands_history", [])
+                logger.info(f"✅ Загружено {len(bots_db)} ботов из файла")
+                return
+        except Exception as e:
+            logger.error(f"❌ Ошибка загрузки данных: {e}")
+    
+    # Если файла нет или ошибка — создаём пустые данные
+    bots_db = {}
+    bot_counter = 1
+    scripts_db = {}
+    commands_history = []
+    logger.info("📝 Созданы новые пустые данные")
+
+def save_data():
+    """Сохраняет данные в JSON-файл"""
+    try:
+        data = {
+            "bots_db": bots_db,
+            "bot_counter": bot_counter,
+            "scripts_db": scripts_db,
+            "commands_history": commands_history[-100:]  # Только последние 100
+        }
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        logger.info("💾 Данные сохранены")
+    except Exception as e:
+        logger.error(f"❌ Ошибка сохранения данных: {e}")
+
+# Загружаем данные при старте
+load_data()
+
+# ============================================
+# 4. ХРАНИЛИЩЕ В ПАМЯТИ
+# ============================================
+bots_db: Dict[int, dict] = {}
+bot_counter = 1
+scripts_db: Dict[int, List[dict]] = {}
+commands_history: List[dict] = []
 active_bots: Dict[int, dict] = {}
 
-# Хранилище скриптов
-scripts_db: Dict[int, List[dict]] = {}
-
-# История команд
-commands_history: List[dict] = []
-
 # ============================================
-# 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# 5. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 # ============================================
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
@@ -53,7 +96,7 @@ def get_bot_by_nickname(nickname: str) -> Optional[dict]:
             return {"id": bot_id, **bot}
     return None
 
-def register_bot(nickname: str, password: str, server_ip: str) -> int:
+def register_bot(nickname: str, password: str, server_ip: str) -> Optional[int]:
     global bot_counter
     
     # Проверяем, не занят ли ник
@@ -76,6 +119,9 @@ def register_bot(nickname: str, password: str, server_ip: str) -> int:
     
     scripts_db[bot_id] = []
     
+    # Сохраняем изменения
+    save_data()
+    
     logger.info(f"✅ Бот {nickname} зарегистрирован с ID {bot_id}")
     return bot_id
 
@@ -83,14 +129,17 @@ def update_bot_status(bot_id: int, status: str):
     if bot_id in bots_db:
         bots_db[bot_id]["status"] = status
         bots_db[bot_id]["last_seen"] = datetime.now().isoformat()
+        save_data()
 
 def update_bot_server_ip(bot_id: int, server_ip: str):
     if bot_id in bots_db:
         bots_db[bot_id]["server_ip"] = server_ip
+        save_data()
 
 def update_bot_script(bot_id: int, script_name: str):
     if bot_id in bots_db:
         bots_db[bot_id]["script_name"] = script_name
+        save_data()
 
 def get_all_bots() -> List[dict]:
     result = []
@@ -100,8 +149,8 @@ def get_all_bots() -> List[dict]:
             "nickname": bot["nickname"],
             "server_ip": bot["server_ip"],
             "status": bot["status"],
-            "script_name": bot["script_name"] or "Нет скрипта",
-            "last_seen": bot["last_seen"]
+            "script_name": bot.get("script_name", "") or "Нет скрипта",
+            "last_seen": bot.get("last_seen", "Неизвестно")
         })
     return result
 
@@ -113,9 +162,9 @@ def log_command(bot_id: int, command_type: str, command: str, params: str = ""):
         "params": params,
         "created_at": datetime.now().isoformat()
     })
-    # Ограничиваем историю
     if len(commands_history) > 100:
         commands_history.pop(0)
+    save_data()
 
 def save_uploaded_file(file: UploadFile, bot_id: int) -> str:
     ext = file.filename.split('.')[-1] if '.' in file.filename else 'dat'
@@ -134,11 +183,12 @@ def save_uploaded_file(file: UploadFile, bot_id: int) -> str:
         "upload_date": datetime.now().isoformat(),
         "is_active": True
     })
+    save_data()
     
     return file_path
 
 # ============================================
-# 4. ГЛАВНЫЕ СТРАНИЦЫ
+# 6. ГЛАВНЫЕ СТРАНИЦЫ
 # ============================================
 @app.get("/")
 async def get_index():
@@ -146,7 +196,10 @@ async def get_index():
         with open("index.html", "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
-        return HTMLResponse(content="<h1>❌ index.html не найден</h1>", status_code=404)
+        return HTMLResponse(content="""
+            <h1>❌ index.html не найден</h1>
+            <p>Создайте файл index.html</p>
+        """, status_code=404)
 
 @app.get("/register")
 async def get_register():
@@ -154,7 +207,10 @@ async def get_register():
         with open("register.html", "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
-        return HTMLResponse(content="<h1>❌ register.html не найден</h1>", status_code=404)
+        return HTMLResponse(content="""
+            <h1>❌ register.html не найден</h1>
+            <p>Создайте файл register.html</p>
+        """, status_code=404)
 
 @app.get("/manage")
 async def get_manage():
@@ -162,10 +218,13 @@ async def get_manage():
         with open("bot_management.html", "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
-        return HTMLResponse(content="<h1>❌ bot_management.html не найден</h1>", status_code=404)
+        return HTMLResponse(content="""
+            <h1>❌ bot_management.html не найден</h1>
+            <p>Создайте файл bot_management.html</p>
+        """, status_code=404)
 
 # ============================================
-# 5. API: РЕГИСТРАЦИЯ
+# 7. API: РЕГИСТРАЦИЯ
 # ============================================
 @app.post("/api/register")
 async def api_register(
@@ -193,7 +252,7 @@ async def api_register(
     }
 
 # ============================================
-# 6. API: ПОЛУЧИТЬ ВСЕХ БОТОВ
+# 8. API: ПОЛУЧИТЬ ВСЕХ БОТОВ
 # ============================================
 @app.get("/api/bots")
 async def api_get_bots():
@@ -206,7 +265,7 @@ async def api_get_bots():
         return []
 
 # ============================================
-# 7. API: ОБНОВИТЬ IP
+# 9. API: ОБНОВИТЬ IP
 # ============================================
 @app.post("/api/bot/update_ip")
 async def api_update_ip(bot_id: int = Form(...), server_ip: str = Form(...)):
@@ -222,7 +281,7 @@ async def api_update_ip(bot_id: int = Form(...), server_ip: str = Form(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================
-# 8. API: ЗАГРУЗИТЬ СКРИПТ
+# 10. API: ЗАГРУЗИТЬ СКРИПТ
 # ============================================
 @app.post("/api/bot/upload_script")
 async def api_upload_script(
@@ -251,7 +310,7 @@ async def api_upload_script(
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================
-# 9. API: КОМАНДА В ЧАТ
+# 11. API: КОМАНДА В ЧАТ
 # ============================================
 @app.post("/api/chat_command")
 async def api_chat_command(bot_id: int = Form(...), command: str = Form(...)):
@@ -278,7 +337,7 @@ async def api_chat_command(bot_id: int = Form(...), command: str = Form(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================
-# 10. API: ПРЯМАЯ КОМАНДА
+# 12. API: ПРЯМАЯ КОМАНДА
 # ============================================
 @app.post("/api/direct_command")
 async def api_direct_command(bot_id: int = Form(...), command: str = Form(...), params: str = Form("")):
@@ -306,7 +365,7 @@ async def api_direct_command(bot_id: int = Form(...), command: str = Form(...), 
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================
-# 11. API: СТАТИСТИКА
+# 13. API: СТАТИСТИКА
 # ============================================
 @app.get("/api/stats")
 async def api_stats():
@@ -317,7 +376,7 @@ async def api_stats():
     }
 
 # ============================================
-# 12. WEBSOCKET ДЛЯ БОТОВ
+# 14. WEBSOCKET ДЛЯ БОТОВ
 # ============================================
 @app.websocket("/ws/{bot_id}")
 async def websocket_endpoint(websocket: WebSocket, bot_id: int):
@@ -377,7 +436,7 @@ async def websocket_endpoint(websocket: WebSocket, bot_id: int):
         update_bot_status(bot_id, "offline")
 
 # ============================================
-# 13. ЗАПУСК
+# 15. ЗАПУСК
 # ============================================
 if __name__ == "__main__":
     import uvicorn
