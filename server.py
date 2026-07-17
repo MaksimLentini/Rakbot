@@ -1,7 +1,6 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, File, UploadFile, Form
 from fastapi.responses import HTMLResponse
 import json
-import sqlite3
 import asyncio
 import os
 import shutil
@@ -12,101 +11,35 @@ from datetime import datetime
 import logging
 
 # ============================================
-# 1. НАСТРОЙКА ЛОГИРОВАНИЯ (для отладки)
+# 1. НАСТРОЙКА
 # ============================================
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ============================================
-# 2. СОЗДАЁМ ПРИЛОЖЕНИЕ
-# ============================================
 app = FastAPI(title="SAMP Bot Control Panel", version="2.0")
 
-# Создаём папки для загрузок (с проверкой прав)
-try:
-    os.makedirs("uploads", exist_ok=True)
-    os.makedirs("scripts", exist_ok=True)
-    logger.info("✅ Папки созданы успешно")
-except Exception as e:
-    logger.error(f"❌ Ошибка создания папок: {e}")
+# Создаём папки
+os.makedirs("uploads", exist_ok=True)
+os.makedirs("scripts", exist_ok=True)
 
 # ============================================
-# 3. ХРАНИЛИЩЕ АКТИВНЫХ БОТОВ
+# 2. ХРАНИЛИЩЕ В ПАМЯТИ (ВМЕСТО БАЗЫ ДАННЫХ)
 # ============================================
+# Все боты хранятся здесь
+bots_db: Dict[int, dict] = {}
+bot_counter = 1  # Автоинкремент ID
+
+# Активные WebSocket соединения
 active_bots: Dict[int, dict] = {}
 
-# ============================================
-# 4. РАБОТА С БАЗОЙ ДАННЫХ (УЛУЧШЕННАЯ)
-# ============================================
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bots.db")
+# Хранилище скриптов
+scripts_db: Dict[int, List[dict]] = {}
 
-def get_db_connection():
-    """Создаёт соединение с БД с правильными настройками"""
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def init_database():
-    """Инициализирует базу данных с проверкой ошибок"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Таблица ботов
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS bots (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nickname TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                server_ip TEXT DEFAULT '127.0.0.1:7777',
-                status TEXT DEFAULT 'offline',
-                script_name TEXT DEFAULT '',
-                last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
-                registered_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Таблица скриптов
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS scripts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                bot_id INTEGER,
-                filename TEXT,
-                filepath TEXT,
-                upload_date DATETIME DEFAULT CURRENT_TIMESTAMP,
-                is_active INTEGER DEFAULT 0,
-                FOREIGN KEY (bot_id) REFERENCES bots(id)
-            )
-        ''')
-        
-        # Таблица команд
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS commands (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                bot_id INTEGER,
-                command_type TEXT,
-                command TEXT,
-                params TEXT,
-                executed INTEGER DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (bot_id) REFERENCES bots(id)
-            )
-        ''')
-        
-        conn.commit()
-        conn.close()
-        logger.info("✅ База данных успешно инициализирована")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Ошибка инициализации БД: {e}")
-        return False
-
-# Инициализируем БД при старте
-if not init_database():
-    logger.error("❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось инициализировать БД")
+# История команд
+commands_history: List[dict] = []
 
 # ============================================
-# 5. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (С ОБРАБОТКОЙ ОШИБОК)
+# 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 # ============================================
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
@@ -115,142 +48,97 @@ def verify_password(password: str, hashed: str) -> bool:
     return hash_password(password) == hashed
 
 def get_bot_by_nickname(nickname: str) -> Optional[dict]:
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, nickname, password_hash, server_ip, status, script_name FROM bots WHERE nickname = ?",
-            (nickname,)
-        )
-        row = cursor.fetchone()
-        conn.close()
-        if row:
-            return dict(row)
-        return None
-    except Exception as e:
-        logger.error(f"Ошибка get_bot_by_nickname: {e}")
-        return None
+    for bot_id, bot in bots_db.items():
+        if bot["nickname"].lower() == nickname.lower():
+            return {"id": bot_id, **bot}
+    return None
 
-def register_bot(nickname: str, password: str, server_ip: str) -> Optional[int]:
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        password_hash = hash_password(password)
-        cursor.execute(
-            "INSERT INTO bots (nickname, password_hash, server_ip) VALUES (?, ?, ?)",
-            (nickname, password_hash, server_ip)
-        )
-        bot_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        logger.info(f"✅ Бот {nickname} зарегистрирован с ID {bot_id}")
-        return bot_id
-    except sqlite3.IntegrityError:
-        logger.error(f"❌ Бот {nickname} уже существует")
+def register_bot(nickname: str, password: str, server_ip: str) -> int:
+    global bot_counter
+    
+    # Проверяем, не занят ли ник
+    existing = get_bot_by_nickname(nickname)
+    if existing:
         return None
-    except Exception as e:
-        logger.error(f"❌ Ошибка регистрации: {e}")
-        return None
+    
+    bot_id = bot_counter
+    bot_counter += 1
+    
+    bots_db[bot_id] = {
+        "nickname": nickname,
+        "password_hash": hash_password(password),
+        "server_ip": server_ip,
+        "status": "offline",
+        "script_name": "",
+        "last_seen": datetime.now().isoformat(),
+        "registered_at": datetime.now().isoformat()
+    }
+    
+    scripts_db[bot_id] = []
+    
+    logger.info(f"✅ Бот {nickname} зарегистрирован с ID {bot_id}")
+    return bot_id
 
 def update_bot_status(bot_id: int, status: str):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE bots SET status = ?, last_seen = CURRENT_TIMESTAMP WHERE id = ?",
-            (status, bot_id)
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"Ошибка update_bot_status: {e}")
+    if bot_id in bots_db:
+        bots_db[bot_id]["status"] = status
+        bots_db[bot_id]["last_seen"] = datetime.now().isoformat()
 
 def update_bot_server_ip(bot_id: int, server_ip: str):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE bots SET server_ip = ? WHERE id = ?",
-            (server_ip, bot_id)
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"Ошибка update_bot_server_ip: {e}")
+    if bot_id in bots_db:
+        bots_db[bot_id]["server_ip"] = server_ip
 
 def update_bot_script(bot_id: int, script_name: str):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE bots SET script_name = ? WHERE id = ?",
-            (script_name, bot_id)
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"Ошибка update_bot_script: {e}")
+    if bot_id in bots_db:
+        bots_db[bot_id]["script_name"] = script_name
 
 def get_all_bots() -> List[dict]:
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, nickname, server_ip, status, script_name, last_seen FROM bots ORDER BY id")
-        rows = cursor.fetchall()
-        conn.close()
-        bots = []
-        for row in rows:
-            bots.append({
-                "id": row["id"],
-                "nickname": row["nickname"],
-                "server_ip": row["server_ip"],
-                "status": row["status"],
-                "script_name": row["script_name"] or "Нет скрипта",
-                "last_seen": row["last_seen"]
-            })
-        return bots
-    except Exception as e:
-        logger.error(f"Ошибка get_all_bots: {e}")
-        return []
+    result = []
+    for bot_id, bot in bots_db.items():
+        result.append({
+            "id": bot_id,
+            "nickname": bot["nickname"],
+            "server_ip": bot["server_ip"],
+            "status": bot["status"],
+            "script_name": bot["script_name"] or "Нет скрипта",
+            "last_seen": bot["last_seen"]
+        })
+    return result
 
 def log_command(bot_id: int, command_type: str, command: str, params: str = ""):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO commands (bot_id, command_type, command, params) VALUES (?, ?, ?, ?)",
-            (bot_id, command_type, command, params)
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"Ошибка log_command: {e}")
+    commands_history.append({
+        "bot_id": bot_id,
+        "command_type": command_type,
+        "command": command,
+        "params": params,
+        "created_at": datetime.now().isoformat()
+    })
+    # Ограничиваем историю
+    if len(commands_history) > 100:
+        commands_history.pop(0)
 
 def save_uploaded_file(file: UploadFile, bot_id: int) -> str:
-    try:
-        ext = file.filename.split('.')[-1] if '.' in file.filename else 'dat'
-        unique_name = f"{bot_id}_{uuid.uuid4().hex[:8]}.{ext}"
-        file_path = os.path.join("uploads", unique_name)
-        
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO scripts (bot_id, filename, filepath, is_active) VALUES (?, ?, ?, ?)",
-            (bot_id, file.filename, file_path, 1)
-        )
-        conn.commit()
-        conn.close()
-        
-        return file_path
-    except Exception as e:
-        logger.error(f"Ошибка save_uploaded_file: {e}")
-        raise
+    ext = file.filename.split('.')[-1] if '.' in file.filename else 'dat'
+    unique_name = f"{bot_id}_{uuid.uuid4().hex[:8]}.{ext}"
+    file_path = os.path.join("uploads", unique_name)
+    
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    if bot_id not in scripts_db:
+        scripts_db[bot_id] = []
+    
+    scripts_db[bot_id].append({
+        "filename": file.filename,
+        "filepath": file_path,
+        "upload_date": datetime.now().isoformat(),
+        "is_active": True
+    })
+    
+    return file_path
 
 # ============================================
-# 6. ГЛАВНЫЕ СТРАНИЦЫ
+# 4. ГЛАВНЫЕ СТРАНИЦЫ
 # ============================================
 @app.get("/")
 async def get_index():
@@ -277,7 +165,7 @@ async def get_manage():
         return HTMLResponse(content="<h1>❌ bot_management.html не найден</h1>", status_code=404)
 
 # ============================================
-# 7. API: РЕГИСТРАЦИЯ БОТА
+# 5. API: РЕГИСТРАЦИЯ
 # ============================================
 @app.post("/api/register")
 async def api_register(
@@ -305,7 +193,7 @@ async def api_register(
     }
 
 # ============================================
-# 8. API: ПОЛУЧИТЬ ВСЕХ БОТОВ
+# 6. API: ПОЛУЧИТЬ ВСЕХ БОТОВ
 # ============================================
 @app.get("/api/bots")
 async def api_get_bots():
@@ -318,19 +206,23 @@ async def api_get_bots():
         return []
 
 # ============================================
-# 9. API: ОБНОВИТЬ IP
+# 7. API: ОБНОВИТЬ IP
 # ============================================
 @app.post("/api/bot/update_ip")
 async def api_update_ip(bot_id: int = Form(...), server_ip: str = Form(...)):
     try:
+        if bot_id not in bots_db:
+            raise HTTPException(status_code=404, detail="Бот не найден")
         update_bot_server_ip(bot_id, server_ip)
         return {"status": "ok", "message": "IP обновлён"}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Ошибка update_ip: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================
-# 10. API: ЗАГРУЗИТЬ СКРИПТ
+# 8. API: ЗАГРУЗИТЬ СКРИПТ
 # ============================================
 @app.post("/api/bot/upload_script")
 async def api_upload_script(
@@ -338,17 +230,11 @@ async def api_upload_script(
     script_file: UploadFile = File(...)
 ):
     try:
+        if bot_id not in bots_db:
+            raise HTTPException(status_code=404, detail="Бот не найден")
+        
         if not script_file.filename.endswith(('.cs', '.asi', '.dll', '.cleo')):
             raise HTTPException(status_code=400, detail="Разрешены только .cs, .asi, .dll, .cleo")
-        
-        # Проверяем, существует ли бот
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM bots WHERE id = ?", (bot_id,))
-        if not cursor.fetchone():
-            conn.close()
-            raise HTTPException(status_code=404, detail="Бот не найден")
-        conn.close()
         
         file_path = save_uploaded_file(script_file, bot_id)
         update_bot_script(bot_id, script_file.filename)
@@ -365,11 +251,14 @@ async def api_upload_script(
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================
-# 11. API: КОМАНДА В ЧАТ
+# 9. API: КОМАНДА В ЧАТ
 # ============================================
 @app.post("/api/chat_command")
 async def api_chat_command(bot_id: int = Form(...), command: str = Form(...)):
     try:
+        if bot_id not in bots_db:
+            raise HTTPException(status_code=404, detail="Бот не найден")
+        
         if bot_id not in active_bots:
             raise HTTPException(status_code=404, detail="Бот не в сети")
         
@@ -389,11 +278,14 @@ async def api_chat_command(bot_id: int = Form(...), command: str = Form(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================
-# 12. API: ПРЯМАЯ КОМАНДА
+# 10. API: ПРЯМАЯ КОМАНДА
 # ============================================
 @app.post("/api/direct_command")
 async def api_direct_command(bot_id: int = Form(...), command: str = Form(...), params: str = Form("")):
     try:
+        if bot_id not in bots_db:
+            raise HTTPException(status_code=404, detail="Бот не найден")
+        
         if bot_id not in active_bots:
             raise HTTPException(status_code=404, detail="Бот не в сети")
         
@@ -414,7 +306,18 @@ async def api_direct_command(bot_id: int = Form(...), command: str = Form(...), 
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================
-# 13. WEBSOCKET ДЛЯ БОТОВ
+# 11. API: СТАТИСТИКА
+# ============================================
+@app.get("/api/stats")
+async def api_stats():
+    return {
+        "total_bots": len(bots_db),
+        "online_bots": len(active_bots),
+        "total_commands": len(commands_history)
+    }
+
+# ============================================
+# 12. WEBSOCKET ДЛЯ БОТОВ
 # ============================================
 @app.websocket("/ws/{bot_id}")
 async def websocket_endpoint(websocket: WebSocket, bot_id: int):
@@ -474,7 +377,7 @@ async def websocket_endpoint(websocket: WebSocket, bot_id: int):
         update_bot_status(bot_id, "offline")
 
 # ============================================
-# 14. ЗАПУСК
+# 13. ЗАПУСК
 # ============================================
 if __name__ == "__main__":
     import uvicorn
