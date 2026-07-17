@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управление ботами - SAMP Panel</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3e 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        h1 {
+            color: #e94560;
+            font-size: 2em;
+        }
+        .back-btn {
+            padding: 10px 20px;
+            background: #2a2a6e;
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background 0.3s;
+        }
+        .back-btn:hover {
+            background: #3a3a8e;
+        }
+        .refresh-btn {
+            padding: 10px 20px;
+            background: #1a3a6e;
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .refresh-btn:hover {
+            background: #2a5a8e;
+        }
+        .bot-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .bot-card {
+            background: rgba(20, 20, 50, 0.9);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(255,255,255,0.05);
+            transition: all 0.3s;
+        }
+        .bot-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-color: #e94560;
+        }
+        .bot-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .bot-name {
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        .status {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .status.online {
+            background: rgba(76, 175, 80, 0.3);
+            color: #4caf50;
+            border: 1px solid #4caf50;
+        }
+        .status.offline {
+            background: rgba(244, 67, 54, 0.3);
+            color: #f44336;
+            border: 1px solid #f44336;
+        }
+        .bot-info {
+            color: #8892b0;
+            font-size: 0.9em;
+            margin: 10px 0;
+        }
+        .bot-info span {
+            display: block;
+            margin: 3px 0;
+        }
+        .command-section {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+        .command-section h4 {
+            color: #8892b0;
+            margin-bottom: 10px;
+            font-size: 0.95em;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px 12px;
+            margin: 5px 0;
+            border: 2px solid #2a2a5e;
+            border-radius: 8px;
+            background: #0d0d1a;
+            color: #fff;
+            font-size: 0.9em;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #e94560;
+        }
+        .btn-small {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #e94560, #c73652);
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 5px;
+            width: 100%;
+        }
+        .btn-small:hover {
+            transform: scale(1.02);
+            box-shadow: 0 5px 20px rgba(233, 69, 96, 0.3);
+        }
+        .btn-small.secondary {
+            background: linear-gradient(135deg, #2d6a4f, #1b4332);
+        }
+        .btn-small.secondary:hover {
+            box-shadow: 0 5px 20px rgba(45, 106, 79, 0.3);
+        }
+        .btn-small.info {
+            background: linear-gradient(135deg, #1a3a6e, #0d1f3c);
+        }
+        .btn-small.info:hover {
+            box-shadow: 0 5px 20px rgba(26, 58, 110, 0.3);
+        }
+        .file-upload {
+            margin: 10px 0;
+            padding: 10px;
+            border: 2px dashed #2a2a5e;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .file-upload:hover {
+            border-color: #e94560;
+            background: rgba(233, 69, 96, 0.05);
+        }
+        .file-upload input {
+            display: none;
+        }
+        #log {
+            margin-top: 30px;
+            background: rgba(0,0,0,0.3);
+            padding: 20px;
+            border-radius: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.9em;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .log-entry {
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+        .log-time {
+            color: #8892b0;
+            margin-right: 10px;
+        }
+        .no-bots {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 50px;
+            color: #8892b0;
+        }
+        .loading {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 50px;
+            color: #8892b0;
+        }
+        @media (max-width: 768px) {
+            .bot-grid {
+                grid-template-columns: 1fr;
+            }
+            header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            h1 {
+                font-size: 1.5em;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎮 Управление ботами</h1>
+            <div>
+                <button class="refresh-btn" onclick="loadBots()">🔄 Обновить</button>
+                <a href="/" class="back-btn">← На главную</a>
+            </div>
+        </header>
+        
+        <div id="botsContainer" class="bot-grid">
+            <div class="loading">⏳ Загрузка ботов...</div>
+        </div>
+        
+        <div id="log">
+            <strong>📋 Лог действий:</strong>
+            <div id="logEntries"></div>
+        </div>
+    </div>
+    
+    <script>
+        // ========================================
+        // 1. ЗАГРУЗКА СПИСКА БОТОВ
+        // ========================================
+        async function loadBots() {
+            const container = document.getElementById('botsContainer');
+            container.innerHTML = '<div class="loading">⏳ Загрузка ботов...</div>';
+            
+            try {
+                const response = await fetch('/api/bots');
+                const bots = await response.json();
+                
+                if (bots.length === 0) {
+                    container.innerHTML = `
+                        <div class="no-bots">
+                            🤖 <strong>Нет зарегистрированных ботов.</strong><br>
+                            Перейдите на <a href="/register" style="color: #e94560;">страницу регистрации</a> и создайте бота.
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = '';
+                bots.forEach(bot => {
+                    const card = createBotCard(bot);
+                    container.appendChild(card);
+                });
+                
+                addLog(`✅ Загружено ${bots.length} ботов`);
+            } catch (error) {
+                console.error('Ошибка загрузки ботов:', error);
+                container.innerHTML = `
+                    <div class="no-bots">
+                        ❌ <strong>Ошибка загрузки ботов</strong><br>
+                        ${error.message}
+                    </div>
+                `;
+                addLog(`❌ Ошибка загрузки: ${error.message}`);
+            }
+        }
+        
+        // ========================================
+        // 2. СОЗДАНИЕ КАРТОЧКИ БОТА
+        // ========================================
+        function createBotCard(bot) {
+            const card = document.createElement('div');
+            card.className = 'bot-card';
+            
+            const statusClass = bot.status === 'online' ? 'online' : 'offline';
+            const statusText = bot.status === 'online' ? '🟢 Онлайн' : '🔴 Оффлайн';
+            
+            const lastSeen = bot.last_seen ? new Date(bot.last_seen).toLocaleString() : 'Неизвестно';
+            
+            card.innerHTML = `
+                <div class="bot-header">
+                    <div class="bot-name">🤖 ${bot.nickname}</div>
+                    <span class="status ${statusClass}">${statusText}</span>
+                </div>
+                
+                <div class="bot-info">
+                    <span>🆔 ID: ${bot.id}</span>
+                    <span>🌐 Сервер: ${bot.server_ip || 'не указан'}</span>
+                    <span>📜 Скрипт: ${bot.script_name || 'Нет'}</span>
+                    <span>🕐 Последний раз: ${lastSeen}</span>
+                </div>
+                
+                <div class="command-section">
+                    <h4>💬 Команда в чат</h4>
+                    <input type="text" id="chat_cmd_${bot.id}" placeholder="/mycommand" value="/help">
+                    <button class="btn-small" onclick="sendChatCommand(${bot.id})">
+                        💬 Отправить в чат
+                    </button>
+                </div>
+                
+                <div class="command-section">
+                    <h4>⚡ Прямая команда (для бота)</h4>
+                    <input type="text" id="direct_cmd_${bot.id}" placeholder="teleport">
+                    <input type="text" id="direct_params_${bot.id}" placeholder="2480 -1665 13 (параметры)">
+                    <button class="btn-small secondary" onclick="sendDirectCommand(${bot.id})">
+                        ⚡ Выполнить
+                    </button>
+                </div>
+                
+                <div class="command-section">
+                    <h4>📂 Загрузить скрипт</h4>
+                    <div class="file-upload" onclick="document.getElementById('file_${bot.id}').click()">
+                        <p>📁 Нажмите для выбора файла</p>
+                        <p style="font-size:0.8em; color:#8892b0;">Поддерживаются: .cs, .asi, .dll, .cleo</p>
+                        <input type="file" id="file_${bot.id}" accept=".cs,.asi,.dll,.cleo" 
+                               onchange="uploadScript(${bot.id}, this)">
+                    </div>
+                </div>
+                
+                <div class="command-section">
+                    <h4>🌐 Изменить IP сервера</h4>
+                    <input type="text" id="ip_${bot.id}" value="${bot.server_ip || ''}">
+                    <button class="btn-small info" onclick="updateServerIP(${bot.id})">
+                        🔄 Обновить IP
+                    </button>
+                </div>
+            `;
+            
+            return card;
+        }
+        
+        // ========================================
+        // 3. ОТПРАВКА КОМАНД
+        // ========================================
+        async function sendChatCommand(botId) {
+            const command = document.getElementById(`chat_cmd_${botId}`).value.trim();
+            if (!command) {
+                addLog('❌ Введите команду для чата');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('bot_id', botId);
+            formData.append('command', command);
+            
+            try {
+                const response = await fetch('/api/chat_command', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    addLog(`✅ Команда "${command}" отправлена боту ${botId} в чат`);
+                } else {
+                    addLog(`❌ Ошибка: ${data.detail || 'Неизвестная ошибка'}`);
+                }
+            } catch (error) {
+                addLog(`❌ Ошибка: ${error.message}`);
+            }
+        }
+        
+        async function sendDirectCommand(botId) {
+            const command = document.getElementById(`direct_cmd_${botId}`).value.trim();
+            const params = document.getElementById(`direct_params_${botId}`).value.trim();
+            
+            if (!command) {
+                addLog('❌ Введите команду');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('bot_id', botId);
+            formData.append('command', command);
+            formData.append('params', params);
+            
+            try {
+                const response = await fetch('/api/direct_command', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    addLog(`✅ Прямая команда "${command}" отправлена боту ${botId}`);
+                } else {
+                    addLog(`❌ Ошибка: ${data.detail || 'Неизвестная ошибка'}`);
+                }
+            } catch (error) {
+                addLog(`❌ Ошибка: ${error.message}`);
+            }
+        }
+        
+        // ========================================
+        // 4. ЗАГРУЗКА СКРИПТА
+        // ========================================
+        async function uploadScript(botId, input) {
+            const file = input.files[0];
+            if (!file) return;
+            
+            addLog(`📤 Загрузка "${file.name}" для бота ${botId}...`);
+            
+            const formData = new FormData();
+            formData.append('bot_id', botId);
+            formData.append('script_file', file);
+            
+            try {
+                const response = await fetch('/api/bot/upload_script', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    addLog(`✅ Скрипт "${file.name}" загружен для бота ${botId}`);
+                    loadBots(); // Обновляем список
+                } else {
+                    addLog(`❌ Ошибка: ${data.detail || 'Неизвестная ошибка'}`);
+                }
+            } catch (error) {
+                addLog(`❌ Ошибка: ${error.message}`);
+            }
+            
+            // Сбрасываем input
+            input.value = '';
+        }
+        
+        // ========================================
+        // 5. ОБНОВЛЕНИЕ IP
+        // ========================================
+        async function updateServerIP(botId) {
+            const ip = document.getElementById(`ip_${botId}`).value.trim();
+            if (!ip) {
+                addLog('❌ Введите IP сервера');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('bot_id', botId);
+            formData.append('server_ip', ip);
+            
+            try {
+                const response = await fetch('/api/bot/update_ip', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    addLog(`✅ IP обновлён для бота ${botId}: ${ip}`);
+                    loadBots();
+                } else {
+                    addLog(`❌ Ошибка: ${data.detail || 'Неизвестная ошибка'}`);
+                }
+            } catch (error) {
+                addLog(`❌ Ошибка: ${error.message}`);
+            }
+        }
+        
+        // ========================================
+        // 6. ЛОГ
+        // ========================================
+        function addLog(message) {
+            const logEntries = document.getElementById('logEntries');
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-time">[${time}]</span> ${message}`;
+            logEntries.appendChild(entry);
+            logEntries.scrollTop = logEntries.scrollHeight;
+            
+            // Ограничиваем количество записей
+            while (logEntries.children.length > 100) {
+                logEntries.removeChild(logEntries.firstChild);
+            }
+        }
+        
+        // ========================================
+        // 7. АВТООБНОВЛЕНИЕ
+        // ========================================
+        // Загружаем при открытии
+        document.addEventListener('DOMContentLoaded', () => {
+            loadBots();
+            addLog('🟢 Система загружена, ожидание команд...');
+        });
+        
+        // Обновляем каждые 10 секунд
+        setInterval(loadBots, 10000);
+    </script>
+</body>
+</html>
